@@ -1,6 +1,6 @@
 'use client';
 import React, { useState, useMemo } from 'react';
-import { X, Search, AlertTriangle, CalendarClock, ListChecks, ChevronRight, Check, Send } from 'lucide-react';
+import { X, Search, AlertTriangle, CalendarClock, ListChecks, ChevronRight, Check } from 'lucide-react';
 
 function fmtDate(iso) {
   if (!iso) return '—';
@@ -29,7 +29,13 @@ function startOfCurrentMonth() {
   return new Date(now.getFullYear(), now.getMonth(), 1);
 }
 
-export default function WartungView({ items, onUpdateNotiz }) {
+function addOneYear(iso) {
+  const d = new Date(iso + 'T00:00:00');
+  d.setFullYear(d.getFullYear() + 1);
+  return d.toISOString().slice(0, 10);
+}
+
+export default function WartungView({ items, onUpdateItem }) {
   const [overviewOpen, setOverviewOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [actionItem, setActionItem] = useState(null); // item that was clicked
@@ -185,18 +191,24 @@ export default function WartungView({ items, onUpdateNotiz }) {
           clickedItem={actionItem}
           allItems={items}
           onClose={() => setActionItem(null)}
-          onConfirm={onUpdateNotiz}
+          onConfirm={onUpdateItem}
         />
       )}
     </div>
   );
 }
 
+const ACTIONS = {
+  angebot: { label: 'Angebot geschickt' },
+  durchgefuehrt: { label: 'Wartung durchgeführt' },
+};
+
 function OfferActionModal({ clickedItem, allItems, onClose, onConfirm }) {
   const relatedItems = useMemo(
     () => allItems.filter(i => groupKey(i) === groupKey(clickedItem)),
     [allItems, clickedItem]
   );
+  const [action, setAction] = useState('angebot');
   const [selected, setSelected] = useState(() => new Set([clickedItem.id]));
   const [date, setDate] = useState(todayISO());
   const [saving, setSaving] = useState(false);
@@ -212,12 +224,19 @@ function OfferActionModal({ clickedItem, allItems, onClose, onConfirm }) {
   async function confirm() {
     if (selected.size === 0) return;
     setSaving(true);
-    const dateLabel = new Date(date + 'T00:00:00').toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
-    const entry = `Angebot für Wartung verschickt am ${dateLabel}`;
     const targets = relatedItems.filter(i => selected.has(i.id));
-    for (const item of targets) {
-      const newNotiz = item.notiz ? `${item.notiz} | ${entry}` : entry;
-      await onConfirm(item.id, newNotiz);
+
+    if (action === 'angebot') {
+      const dateLabel = new Date(date + 'T00:00:00').toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+      const entry = `Angebot für Wartung verschickt am ${dateLabel}`;
+      for (const item of targets) {
+        const newNotiz = item.notiz ? `${item.notiz} | ${entry}` : entry;
+        await onConfirm(item.id, { notiz: newNotiz });
+      }
+    } else {
+      for (const item of targets) {
+        await onConfirm(item.id, { letzte_wartung: date, naechste_wartung: addOneYear(date) });
+      }
     }
     setSaving(false);
     onClose();
@@ -231,12 +250,16 @@ function OfferActionModal({ clickedItem, allItems, onClose, onConfirm }) {
           <button onClick={onClose} className="text-[#9AA3AC] hover:text-[#1C2530]"><X className="w-4 h-4" /></button>
         </div>
         <div className="px-5 py-4 flex flex-col gap-4">
-          <div>
-            <div className="text-[12px] font-medium text-[#5B6570] mb-1.5">Aktion</div>
-            <div className="flex items-center gap-2 bg-[#E8F1EF] text-[#2B6E63] rounded-lg px-3 py-2 text-[13px] font-medium">
-              <Send className="w-3.5 h-3.5" /> Angebot geschickt
-            </div>
-          </div>
+          <label className="flex flex-col gap-1">
+            <span className="text-[12px] font-medium text-[#5B6570]">Aktion</span>
+            <select
+              value={action}
+              onChange={e => setAction(e.target.value)}
+              className="w-full border border-[#DCE0DA] rounded-lg px-3 py-2 text-[13px] focus:outline-none focus:ring-1 focus:ring-[#5FA79A]"
+            >
+              {Object.entries(ACTIONS).map(([key, a]) => <option key={key} value={key}>{a.label}</option>)}
+            </select>
+          </label>
 
           <div>
             <div className="text-[12px] font-medium text-[#5B6570] mb-1.5">
@@ -262,13 +285,20 @@ function OfferActionModal({ clickedItem, allItems, onClose, onConfirm }) {
           </div>
 
           <label className="flex flex-col gap-1">
-            <span className="text-[12px] font-medium text-[#5B6570]">Datum</span>
+            <span className="text-[12px] font-medium text-[#5B6570]">
+              {action === 'angebot' ? 'Datum des Angebots' : 'Datum der durchgeführten Wartung'}
+            </span>
             <input
               type="date"
               value={date}
               onChange={e => setDate(e.target.value)}
               className="w-full border border-[#DCE0DA] rounded-lg px-3 py-2 text-[13px] focus:outline-none focus:ring-1 focus:ring-[#5FA79A]"
             />
+            {action === 'durchgefuehrt' && (
+              <span className="text-[11px] text-[#8B95A1] mt-0.5">
+                Letzte Wartung wird auf dieses Datum gesetzt, nächste Wartung automatisch auf {new Date(addOneYear(date) + 'T00:00:00').toLocaleDateString('de-DE')}.
+              </span>
+            )}
           </label>
 
           <button

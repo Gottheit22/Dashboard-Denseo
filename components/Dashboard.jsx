@@ -112,8 +112,8 @@ export default function Dashboard() {
     if (error) setErrorMsg(error.message); else loadAll();
   }
 
-  async function updateMaintenanceNotiz(id, notiz) {
-    const { error } = await supabase.from('maintenance_items').update({ notiz }).eq('id', id);
+  async function updateMaintenanceItem(id, patch) {
+    const { error } = await supabase.from('maintenance_items').update(patch).eq('id', id);
     if (error) setErrorMsg(error.message); else loadAll();
   }
 
@@ -176,7 +176,7 @@ export default function Dashboard() {
             Fehler: {errorMsg}
           </div>
         )}
-        {tab === 'wartung' && <WartungView items={maintenanceItems} onUpdateNotiz={updateMaintenanceNotiz} />}
+        {tab === 'wartung' && <WartungView items={maintenanceItems} onUpdateItem={updateMaintenanceItem} />}
         {tab === 'kanban' && (
           <KanbanView tasks={tasks} onNew={() => setTaskModal({})} onEdit={t => setTaskModal(t)} onDelete={deleteTask} onStatus={setTaskStatus} />
         )}
