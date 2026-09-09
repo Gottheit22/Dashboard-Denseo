@@ -1,6 +1,6 @@
 'use client';
 import React, { useState, useMemo } from 'react';
-import { X, Search, AlertTriangle, CalendarClock, ListChecks, ChevronRight, Check } from 'lucide-react';
+import { X, Search, AlertTriangle, CalendarClock, CalendarCheck, ListChecks, ChevronRight, Check } from 'lucide-react';
 
 function fmtDate(iso) {
   if (!iso) return '—';
@@ -55,6 +55,11 @@ export default function WartungView({ items, onUpdateItem }) {
     .filter(i => isSameMonth(i.naechsteWartung))
     .sort((a, b) => a.naechsteWartung.localeCompare(b.naechsteWartung));
 
+  // Wartung geplant: Geräte mit einem festgelegten Termin für die Durchführung
+  const planned = items
+    .filter(i => i.aktiv && i.geplantDatum)
+    .sort((a, b) => a.geplantDatum.localeCompare(b.geplantDatum));
+
   const filtered = useMemo(() => {
     const base = showInactive ? items : items.filter(i => i.aktiv);
     const q = search.trim().toLowerCase();
@@ -71,7 +76,7 @@ export default function WartungView({ items, onUpdateItem }) {
         <p className="text-[13px] text-[#8B95A1] mt-0.5">Gerätebestand, überfällige und anstehende Wartungen</p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mt-6">
         <div className="bg-white rounded-xl border border-[#E2E5E0] p-4">
           <div className="flex items-center gap-2 mb-3">
             <AlertTriangle className="w-4 h-4 text-[#C1553A]" />
@@ -105,6 +110,26 @@ export default function WartungView({ items, onUpdateItem }) {
                 <div className="flex items-center justify-between">
                   <span className="text-[12.5px] font-medium text-[#1C2530] truncate">{i.kunde}</span>
                   <span className="text-[11px] text-[#8B95A1] shrink-0 ml-2">{fmtDate(i.naechsteWartung)}</span>
+                </div>
+                <div className="text-[11px] text-[#8B95A1] mt-0.5">{i.modell}{i.seriennummer ? ` · ${i.seriennummer}` : ''}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="bg-white rounded-xl border border-[#E2E5E0] p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <CalendarCheck className="w-4 h-4 text-[#5B7FA6]" />
+            <span className="text-[13px] font-medium text-[#1C2530]">Wartung geplant</span>
+            <span className="text-[11px] text-[#5B7FA6] bg-[#E9EFF5] px-1.5 py-0.5 rounded ml-auto">{planned.length}</span>
+          </div>
+          <div className="flex flex-col gap-1.5 max-h-[340px] overflow-y-auto">
+            {planned.length === 0 && <div className="text-[12px] text-[#B0B7BD] py-3 text-center">Keine geplanten Wartungen</div>}
+            {planned.map(i => (
+              <button key={i.id} onClick={() => setActionItem(i)} className="w-full text-left border border-[#DCE4EC] bg-[#F4F7FA] rounded-lg px-3 py-2 hover:border-[#B9C9DA]">
+                <div className="flex items-center justify-between">
+                  <span className="text-[12.5px] font-medium text-[#1C2530] truncate">{i.kunde}</span>
+                  <span className="text-[11px] text-[#5B7FA6] font-medium shrink-0 ml-2">{fmtDate(i.geplantDatum)}</span>
                 </div>
                 <div className="text-[11px] text-[#8B95A1] mt-0.5">{i.modell}{i.seriennummer ? ` · ${i.seriennummer}` : ''}</div>
               </button>
@@ -217,6 +242,7 @@ export default function WartungView({ items, onUpdateItem }) {
 
 const ACTIONS = {
   angebot: { label: 'Angebot geschickt' },
+  geplant: { label: 'Wartung geplant' },
   durchgefuehrt: { label: 'Wartung durchgeführt' },
   archivieren: { label: 'Möchten keine Wartung' },
 };
@@ -250,8 +276,11 @@ function OfferActionModal({ clickedItem, allItems, onClose, onConfirm }) {
     let patchBase = {};
     if (action === 'angebot') {
       autoEntry = `Angebot für Wartung verschickt am ${dateLabel}`;
+    } else if (action === 'geplant') {
+      autoEntry = `Wartung geplant für ${dateLabel}`;
+      patchBase = { geplant_datum: date };
     } else if (action === 'durchgefuehrt') {
-      patchBase = { letzte_wartung: date, naechste_wartung: addOneYear(date) };
+      patchBase = { letzte_wartung: date, naechste_wartung: addOneYear(date), geplant_datum: null };
     } else if (action === 'archivieren') {
       autoEntry = `Möchten keine Wartung – Stand ${dateLabel}`;
       patchBase = { aktiv: false };
@@ -330,7 +359,9 @@ function OfferActionModal({ clickedItem, allItems, onClose, onConfirm }) {
           {action !== 'archivieren' && (
             <label className="flex flex-col gap-1">
               <span className="text-[12px] font-medium text-[#5B6570]">
-                {action === 'angebot' ? 'Datum des Angebots' : 'Datum der durchgeführten Wartung'}
+                {action === 'angebot' && 'Datum des Angebots'}
+                {action === 'geplant' && 'Geplantes Datum der Wartung'}
+                {action === 'durchgefuehrt' && 'Datum der durchgeführten Wartung'}
               </span>
               <input
                 type="date"
