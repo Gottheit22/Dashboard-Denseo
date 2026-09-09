@@ -81,13 +81,13 @@ export default function WartungView({ items, onUpdateItem }) {
           <div className="flex flex-col gap-1.5 max-h-[340px] overflow-y-auto">
             {overdue.length === 0 && <div className="text-[12px] text-[#B0B7BD] py-3 text-center">Keine überfälligen Wartungen</div>}
             {overdue.map(i => (
-              <div key={i.id} className="border border-[#F3DAD3] bg-[#FBF3F1] rounded-lg px-3 py-2">
+              <button key={i.id} onClick={() => setActionItem(i)} className="w-full text-left border border-[#F3DAD3] bg-[#FBF3F1] rounded-lg px-3 py-2 hover:border-[#E7B8AC]">
                 <div className="flex items-center justify-between">
                   <span className="text-[12.5px] font-medium text-[#1C2530] truncate">{i.kunde}</span>
                   <span className="text-[11px] text-[#C1553A] font-medium shrink-0 ml-2">{Math.abs(daysUntil(i.naechsteWartung))} Tage</span>
                 </div>
                 <div className="text-[11px] text-[#8B95A1] mt-0.5">{i.modell}{i.seriennummer ? ` · ${i.seriennummer}` : ''} · fällig {fmtDate(i.naechsteWartung)}</div>
-              </div>
+              </button>
             ))}
           </div>
         </div>
@@ -101,13 +101,13 @@ export default function WartungView({ items, onUpdateItem }) {
           <div className="flex flex-col gap-1.5 max-h-[340px] overflow-y-auto">
             {dueThisMonth.length === 0 && <div className="text-[12px] text-[#B0B7BD] py-3 text-center">Keine Wartungen diesen Monat</div>}
             {dueThisMonth.map(i => (
-              <div key={i.id} className="border border-[#E2E5E0] bg-[#F7F8F6] rounded-lg px-3 py-2">
+              <button key={i.id} onClick={() => setActionItem(i)} className="w-full text-left border border-[#E2E5E0] bg-[#F7F8F6] rounded-lg px-3 py-2 hover:border-[#C9CFC7]">
                 <div className="flex items-center justify-between">
                   <span className="text-[12.5px] font-medium text-[#1C2530] truncate">{i.kunde}</span>
                   <span className="text-[11px] text-[#8B95A1] shrink-0 ml-2">{fmtDate(i.naechsteWartung)}</span>
                 </div>
                 <div className="text-[11px] text-[#8B95A1] mt-0.5">{i.modell}{i.seriennummer ? ` · ${i.seriennummer}` : ''}</div>
-              </div>
+              </button>
             ))}
           </div>
         </div>
@@ -218,7 +218,7 @@ export default function WartungView({ items, onUpdateItem }) {
 const ACTIONS = {
   angebot: { label: 'Angebot geschickt' },
   durchgefuehrt: { label: 'Wartung durchgeführt' },
-  archivieren: { label: 'Kein Wartungsvertrag mehr (archivieren)' },
+  archivieren: { label: 'Möchten keine Wartung' },
 };
 
 function OfferActionModal({ clickedItem, allItems, onClose, onConfirm }) {
@@ -229,6 +229,7 @@ function OfferActionModal({ clickedItem, allItems, onClose, onConfirm }) {
   const [action, setAction] = useState('angebot');
   const [selected, setSelected] = useState(() => new Set([clickedItem.id]));
   const [date, setDate] = useState(todayISO());
+  const [customNote, setCustomNote] = useState('');
   const [saving, setSaving] = useState(false);
 
   function toggle(id) {
@@ -245,21 +246,27 @@ function OfferActionModal({ clickedItem, allItems, onClose, onConfirm }) {
     const targets = relatedItems.filter(i => selected.has(i.id));
     const dateLabel = new Date(date + 'T00:00:00').toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
+    let autoEntry = null;
+    let patchBase = {};
     if (action === 'angebot') {
-      const entry = `Angebot für Wartung verschickt am ${dateLabel}`;
-      for (const item of targets) {
-        const newNotiz = item.notiz ? `${item.notiz} | ${entry}` : entry;
-        await onConfirm(item.id, { notiz: newNotiz });
-      }
+      autoEntry = `Angebot für Wartung verschickt am ${dateLabel}`;
     } else if (action === 'durchgefuehrt') {
-      for (const item of targets) {
-        await onConfirm(item.id, { letzte_wartung: date, naechste_wartung: addOneYear(date) });
-      }
+      patchBase = { letzte_wartung: date, naechste_wartung: addOneYear(date) };
     } else if (action === 'archivieren') {
-      const entry = `Archiviert am ${dateLabel} (kein Wartungsvertrag mehr)`;
-      for (const item of targets) {
-        const newNotiz = item.notiz ? `${item.notiz} | ${entry}` : entry;
-        await onConfirm(item.id, { aktiv: false, notiz: newNotiz });
+      autoEntry = `Möchten keine Wartung – Stand ${dateLabel}`;
+      patchBase = { aktiv: false };
+    }
+
+    const customText = customNote.trim();
+    const combinedEntry = [autoEntry, customText].filter(Boolean).join(' | ');
+
+    for (const item of targets) {
+      const patch = { ...patchBase };
+      if (combinedEntry) {
+        patch.notiz = item.notiz ? `${item.notiz} | ${combinedEntry}` : combinedEntry;
+      }
+      if (Object.keys(patch).length > 0) {
+        await onConfirm(item.id, patch);
       }
     }
     setSaving(false);
@@ -283,6 +290,17 @@ function OfferActionModal({ clickedItem, allItems, onClose, onConfirm }) {
             >
               {Object.entries(ACTIONS).map(([key, a]) => <option key={key} value={key}>{a.label}</option>)}
             </select>
+          </label>
+
+          <label className="flex flex-col gap-1">
+            <span className="text-[12px] font-medium text-[#5B6570]">Eigene Notiz (optional)</span>
+            <textarea
+              value={customNote}
+              onChange={e => setCustomNote(e.target.value)}
+              rows={2}
+              placeholder="Zusätzlicher Hinweis, wird mit an die Notiz angehängt …"
+              className="w-full border border-[#DCE0DA] rounded-lg px-3 py-2 text-[13px] focus:outline-none focus:ring-1 focus:ring-[#5FA79A]"
+            />
           </label>
 
           <div>
