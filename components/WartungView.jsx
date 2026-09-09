@@ -1,6 +1,6 @@
 'use client';
 import React, { useState, useMemo } from 'react';
-import { X, Search, AlertTriangle, CalendarClock, ListChecks, ChevronRight } from 'lucide-react';
+import { X, Search, AlertTriangle, CalendarClock, ListChecks, ChevronRight, Check, Send } from 'lucide-react';
 
 function fmtDate(iso) {
   if (!iso) return '—';
@@ -19,19 +19,33 @@ function isSameMonth(iso) {
   const d = new Date(iso + 'T00:00:00');
   return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
 }
+function groupKey(item) {
+  return item.kundenId || item.kunde;
+}
+function todayISO() { return new Date().toISOString().slice(0, 10); }
 
-export default function WartungView({ items }) {
+function startOfCurrentMonth() {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), 1);
+}
+
+export default function WartungView({ items, onUpdateNotiz }) {
   const [overviewOpen, setOverviewOpen] = useState(false);
   const [search, setSearch] = useState('');
+  const [actionItem, setActionItem] = useState(null); // item that was clicked
 
   const withDate = items.filter(i => i.naechsteWartung);
+  const monthStart = startOfCurrentMonth();
 
+  // Überfällig: Termin liegt vor dem aktuellen Monat (vergangene Monate)
   const overdue = withDate
-    .filter(i => daysUntil(i.naechsteWartung) < 0)
+    .filter(i => new Date(i.naechsteWartung + 'T00:00:00') < monthStart)
     .sort((a, b) => a.naechsteWartung.localeCompare(b.naechsteWartung));
 
+  // Diesen Monat fällig: Termin liegt im aktuellen Kalendermonat,
+  // egal ob er innerhalb des Monats schon verstrichen ist oder noch bevorsteht
   const dueThisMonth = withDate
-    .filter(i => isSameMonth(i.naechsteWartung) && daysUntil(i.naechsteWartung) >= 0)
+    .filter(i => isSameMonth(i.naechsteWartung))
     .sort((a, b) => a.naechsteWartung.localeCompare(b.naechsteWartung));
 
   const filtered = useMemo(() => {
@@ -142,7 +156,11 @@ export default function WartungView({ items }) {
                     const overdue = d !== null && d < 0;
                     return (
                       <tr key={i.id} className="border-b border-[#F0F1EE] hover:bg-[#F7F8F6]">
-                        <td className="px-5 py-2 text-[#1C2530] font-medium">{i.kunde}</td>
+                        <td className="px-5 py-2">
+                          <button onClick={() => setActionItem(i)} className="text-[#1C2530] font-medium hover:text-[#2B6E63] hover:underline text-left">
+                            {i.kunde}
+                          </button>
+                        </td>
                         <td className="px-3 py-2 text-[#5B6570]">{i.modell || '—'}</td>
                         <td className="px-3 py-2 text-[#5B6570]">{i.seriennummer || '—'}</td>
                         <td className="px-3 py-2 text-[#5B6570]">{fmtDate(i.installation)}</td>
@@ -161,6 +179,107 @@ export default function WartungView({ items }) {
           </div>
         </div>
       )}
+
+      {actionItem && (
+        <OfferActionModal
+          clickedItem={actionItem}
+          allItems={items}
+          onClose={() => setActionItem(null)}
+          onConfirm={onUpdateNotiz}
+        />
+      )}
+    </div>
+  );
+}
+
+function OfferActionModal({ clickedItem, allItems, onClose, onConfirm }) {
+  const relatedItems = useMemo(
+    () => allItems.filter(i => groupKey(i) === groupKey(clickedItem)),
+    [allItems, clickedItem]
+  );
+  const [selected, setSelected] = useState(() => new Set([clickedItem.id]));
+  const [date, setDate] = useState(todayISO());
+  const [saving, setSaving] = useState(false);
+
+  function toggle(id) {
+    setSelected(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
+
+  async function confirm() {
+    if (selected.size === 0) return;
+    setSaving(true);
+    const dateLabel = new Date(date + 'T00:00:00').toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    const entry = `Angebot für Wartung verschickt am ${dateLabel}`;
+    const targets = relatedItems.filter(i => selected.has(i.id));
+    for (const item of targets) {
+      const newNotiz = item.notiz ? `${item.notiz} | ${entry}` : entry;
+      await onConfirm(item.id, newNotiz);
+    }
+    setSaving(false);
+    onClose();
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/30 flex items-center justify-center p-4 z-50" onClick={onClose}>
+      <div className="bg-white rounded-2xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-[#E2E5E0]">
+          <span className="text-[14px] font-semibold text-[#1C2530]">{clickedItem.kunde}</span>
+          <button onClick={onClose} className="text-[#9AA3AC] hover:text-[#1C2530]"><X className="w-4 h-4" /></button>
+        </div>
+        <div className="px-5 py-4 flex flex-col gap-4">
+          <div>
+            <div className="text-[12px] font-medium text-[#5B6570] mb-1.5">Aktion</div>
+            <div className="flex items-center gap-2 bg-[#E8F1EF] text-[#2B6E63] rounded-lg px-3 py-2 text-[13px] font-medium">
+              <Send className="w-3.5 h-3.5" /> Angebot geschickt
+            </div>
+          </div>
+
+          <div>
+            <div className="text-[12px] font-medium text-[#5B6570] mb-1.5">
+              Geräte auswählen{relatedItems.length > 1 ? ` (${relatedItems.length} bei diesem Kunden)` : ''}
+            </div>
+            <div className="flex flex-col gap-1.5">
+              {relatedItems.map(i => (
+                <button
+                  key={i.id}
+                  type="button"
+                  onClick={() => toggle(i.id)}
+                  className="flex items-center gap-2 bg-[#F7F8F6] rounded-lg px-2.5 py-2 text-left"
+                >
+                  <span className={`w-4 h-4 rounded flex items-center justify-center shrink-0 ${selected.has(i.id) ? 'bg-[#2B6E63]' : 'border border-[#C9CFC7]'}`}>
+                    {selected.has(i.id) && <Check className="w-3 h-3 text-white" />}
+                  </span>
+                  <span className="text-[12.5px] text-[#1C2530]">
+                    {i.modell || 'Gerät'}{i.seriennummer ? ` · ${i.seriennummer}` : ''}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <label className="flex flex-col gap-1">
+            <span className="text-[12px] font-medium text-[#5B6570]">Datum</span>
+            <input
+              type="date"
+              value={date}
+              onChange={e => setDate(e.target.value)}
+              className="w-full border border-[#DCE0DA] rounded-lg px-3 py-2 text-[13px] focus:outline-none focus:ring-1 focus:ring-[#5FA79A]"
+            />
+          </label>
+
+          <button
+            onClick={confirm}
+            disabled={saving || selected.size === 0}
+            className="bg-[#1C2530] text-white text-[13px] font-medium py-2.5 rounded-lg hover:bg-[#2A3644] disabled:opacity-50"
+          >
+            {saving ? 'Speichern …' : `Bestätigen (${selected.size} Gerät${selected.size === 1 ? '' : 'e'})`}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
