@@ -327,27 +327,29 @@ function OfferActionModal({ clickedItem, allItems, onClose, onConfirm }) {
             </div>
           </div>
 
-          <label className="flex flex-col gap-1">
-            <span className="text-[12px] font-medium text-[#5B6570]">
-              {action === 'angebot' ? 'Datum des Angebots' : 'Datum der durchgeführten Wartung'}
+          {action !== 'archivieren' && (
+            <label className="flex flex-col gap-1">
+              <span className="text-[12px] font-medium text-[#5B6570]">
+                {action === 'angebot' ? 'Datum des Angebots' : 'Datum der durchgeführten Wartung'}
+              </span>
+              <input
+                type="date"
+                value={date}
+                onChange={e => setDate(e.target.value)}
+                className="w-full border border-[#DCE0DA] rounded-lg px-3 py-2 text-[13px] focus:outline-none focus:ring-1 focus:ring-[#5FA79A]"
+              />
+              {action === 'durchgefuehrt' && (
+                <span className="text-[11px] text-[#8B95A1] mt-0.5">
+                  Letzte Wartung wird auf dieses Datum gesetzt, nächste Wartung automatisch auf {new Date(addOneYear(date) + 'T00:00:00').toLocaleDateString('de-DE')}.
+                </span>
+              )}
+            </label>
+          )}
+          {action === 'archivieren' && (
+            <span className="text-[11px] text-[#8B95A1] -mt-1">
+              Die ausgewählten Geräte verschwinden aus "Überfällig" und "Diesen Monat fällig", bleiben aber in der Wartungsübersicht sichtbar.
             </span>
-            <input
-              type="date"
-              value={date}
-              onChange={e => setDate(e.target.value)}
-              className="w-full border border-[#DCE0DA] rounded-lg px-3 py-2 text-[13px] focus:outline-none focus:ring-1 focus:ring-[#5FA79A]"
-            />
-            {action === 'durchgefuehrt' && (
-              <span className="text-[11px] text-[#8B95A1] mt-0.5">
-                Letzte Wartung wird auf dieses Datum gesetzt, nächste Wartung automatisch auf {new Date(addOneYear(date) + 'T00:00:00').toLocaleDateString('de-DE')}.
-              </span>
-            )}
-            {action === 'archivieren' && (
-              <span className="text-[11px] text-[#8B95A1] mt-0.5">
-                Die ausgewählten Geräte verschwinden aus "Überfällig" und "Diesen Monat fällig", bleiben aber in der Wartungsübersicht sichtbar.
-              </span>
-            )}
-          </label>
+          )}
 
           <button
             onClick={confirm}
