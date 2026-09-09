@@ -44,7 +44,7 @@ const protoFromDb = (r) => ({ id: r.id, anlage: r.anlage, datum: r.datum, techni
 const protoToDb = (p) => ({ id: p.id, anlage: p.anlage, datum: p.datum, techniker: p.techniker || null, arbeiten: p.arbeiten || null, befund: p.befund || null, ersatzteile: p.ersatzteile || null, naechste_wartung: p.naechsteWartung || null, task_id: p.taskId || null });
 const noteFromDb = (r) => ({ id: r.id, title: r.title, content: r.content, date: r.date });
 const noteToDb = (n) => ({ id: n.id, title: n.title || null, content: n.content || null, date: n.date });
-const maintFromDb = (r) => ({ id: r.id, kundenId: r.kunden_id, kunde: r.kunde, modell: r.modell, seriennummer: r.seriennummer, installation: r.installation, letzteWartung: r.letzte_wartung, naechsteWartung: r.naechste_wartung, notiz: r.notiz });
+const maintFromDb = (r) => ({ id: r.id, kundenId: r.kunden_id, kunde: r.kunde, modell: r.modell, seriennummer: r.seriennummer, installation: r.installation, letzteWartung: r.letzte_wartung, naechsteWartung: r.naechste_wartung, notiz: r.notiz, aktiv: r.aktiv !== false });
 
 export default function Dashboard() {
   const [tab, setTab] = useState('kanban');

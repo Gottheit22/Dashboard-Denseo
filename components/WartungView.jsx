@@ -38,9 +38,10 @@ function addOneYear(iso) {
 export default function WartungView({ items, onUpdateItem }) {
   const [overviewOpen, setOverviewOpen] = useState(false);
   const [search, setSearch] = useState('');
+  const [showInactive, setShowInactive] = useState(false);
   const [actionItem, setActionItem] = useState(null); // item that was clicked
 
-  const withDate = items.filter(i => i.naechsteWartung);
+  const withDate = items.filter(i => i.naechsteWartung && i.aktiv);
   const monthStart = startOfCurrentMonth();
 
   // Überfällig: Termin liegt vor dem aktuellen Monat (vergangene Monate)
@@ -55,12 +56,13 @@ export default function WartungView({ items, onUpdateItem }) {
     .sort((a, b) => a.naechsteWartung.localeCompare(b.naechsteWartung));
 
   const filtered = useMemo(() => {
+    const base = showInactive ? items : items.filter(i => i.aktiv);
     const q = search.trim().toLowerCase();
-    if (!q) return items;
-    return items.filter(i =>
+    if (!q) return base;
+    return base.filter(i =>
       [i.kunde, i.modell, i.seriennummer, i.kundenId, i.notiz].some(v => (v || '').toLowerCase().includes(q))
     );
-  }, [items, search]);
+  }, [items, search, showInactive]);
 
   return (
     <div>
@@ -120,7 +122,7 @@ export default function WartungView({ items, onUpdateItem }) {
         </div>
         <div className="flex-1">
           <div className="text-[13.5px] font-medium text-[#1C2530]">Wartungsübersicht</div>
-          <div className="text-[12px] text-[#8B95A1]">Alle {items.length} Geräte aus der Wartungsliste ansehen</div>
+          <div className="text-[12px] text-[#8B95A1]">Alle {items.filter(i => i.aktiv).length} aktiven Geräte aus der Wartungsliste ansehen</div>
         </div>
         <ChevronRight className="w-4 h-4 text-[#9AA3AC]" />
       </button>
@@ -132,8 +134,8 @@ export default function WartungView({ items, onUpdateItem }) {
               <span className="text-[14px] font-semibold text-[#1C2530]">Wartungsübersicht</span>
               <button onClick={() => setOverviewOpen(false)} className="text-[#9AA3AC] hover:text-[#1C2530]"><X className="w-4 h-4" /></button>
             </div>
-            <div className="px-5 py-3 border-b border-[#E2E5E0]">
-              <div className="relative">
+            <div className="px-5 py-3 border-b border-[#E2E5E0] flex items-center gap-3">
+              <div className="relative flex-1">
                 <Search className="w-3.5 h-3.5 text-[#9AA3AC] absolute left-2.5 top-1/2 -translate-y-1/2" />
                 <input
                   value={search}
@@ -142,6 +144,10 @@ export default function WartungView({ items, onUpdateItem }) {
                   className="w-full border border-[#DCE0DA] rounded-lg pl-8 pr-3 py-2 text-[13px] focus:outline-none focus:ring-1 focus:ring-[#5FA79A]"
                 />
               </div>
+              <label className="flex items-center gap-1.5 text-[12px] text-[#5B6570] shrink-0 select-none cursor-pointer">
+                <input type="checkbox" checked={showInactive} onChange={e => setShowInactive(e.target.checked)} className="accent-[#2B6E63]" />
+                Archivierte anzeigen
+              </label>
             </div>
             <div className="overflow-y-auto flex-1">
               <table className="w-full text-[12.5px]">
@@ -161,11 +167,22 @@ export default function WartungView({ items, onUpdateItem }) {
                     const d = daysUntil(i.naechsteWartung);
                     const overdue = d !== null && d < 0;
                     return (
-                      <tr key={i.id} className="border-b border-[#F0F1EE] hover:bg-[#F7F8F6]">
+                      <tr key={i.id} className={`border-b border-[#F0F1EE] hover:bg-[#F7F8F6] ${!i.aktiv ? 'opacity-50' : ''}`}>
                         <td className="px-5 py-2">
                           <button onClick={() => setActionItem(i)} className="text-[#1C2530] font-medium hover:text-[#2B6E63] hover:underline text-left">
                             {i.kunde}
                           </button>
+                          {!i.aktiv && (
+                            <>
+                              <span className="ml-2 text-[10px] text-[#9AA3AC] bg-[#EEF0EC] px-1.5 py-0.5 rounded">archiviert</span>
+                              <button
+                                onClick={() => onUpdateItem(i.id, { aktiv: true })}
+                                className="ml-2 text-[10px] text-[#2B6E63] hover:underline"
+                              >
+                                reaktivieren
+                              </button>
+                            </>
+                          )}
                         </td>
                         <td className="px-3 py-2 text-[#5B6570]">{i.modell || '—'}</td>
                         <td className="px-3 py-2 text-[#5B6570]">{i.seriennummer || '—'}</td>
@@ -201,6 +218,7 @@ export default function WartungView({ items, onUpdateItem }) {
 const ACTIONS = {
   angebot: { label: 'Angebot geschickt' },
   durchgefuehrt: { label: 'Wartung durchgeführt' },
+  archivieren: { label: 'Kein Wartungsvertrag mehr (archivieren)' },
 };
 
 function OfferActionModal({ clickedItem, allItems, onClose, onConfirm }) {
@@ -225,17 +243,23 @@ function OfferActionModal({ clickedItem, allItems, onClose, onConfirm }) {
     if (selected.size === 0) return;
     setSaving(true);
     const targets = relatedItems.filter(i => selected.has(i.id));
+    const dateLabel = new Date(date + 'T00:00:00').toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
     if (action === 'angebot') {
-      const dateLabel = new Date(date + 'T00:00:00').toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
       const entry = `Angebot für Wartung verschickt am ${dateLabel}`;
       for (const item of targets) {
         const newNotiz = item.notiz ? `${item.notiz} | ${entry}` : entry;
         await onConfirm(item.id, { notiz: newNotiz });
       }
-    } else {
+    } else if (action === 'durchgefuehrt') {
       for (const item of targets) {
         await onConfirm(item.id, { letzte_wartung: date, naechste_wartung: addOneYear(date) });
+      }
+    } else if (action === 'archivieren') {
+      const entry = `Archiviert am ${dateLabel} (kein Wartungsvertrag mehr)`;
+      for (const item of targets) {
+        const newNotiz = item.notiz ? `${item.notiz} | ${entry}` : entry;
+        await onConfirm(item.id, { aktiv: false, notiz: newNotiz });
       }
     }
     setSaving(false);
@@ -278,6 +302,7 @@ function OfferActionModal({ clickedItem, allItems, onClose, onConfirm }) {
                   </span>
                   <span className="text-[12.5px] text-[#1C2530]">
                     {i.modell || 'Gerät'}{i.seriennummer ? ` · ${i.seriennummer}` : ''}
+                    {!i.aktiv && <span className="text-[#B0B7BD]"> · archiviert</span>}
                   </span>
                 </button>
               ))}
@@ -297,6 +322,11 @@ function OfferActionModal({ clickedItem, allItems, onClose, onConfirm }) {
             {action === 'durchgefuehrt' && (
               <span className="text-[11px] text-[#8B95A1] mt-0.5">
                 Letzte Wartung wird auf dieses Datum gesetzt, nächste Wartung automatisch auf {new Date(addOneYear(date) + 'T00:00:00').toLocaleDateString('de-DE')}.
+              </span>
+            )}
+            {action === 'archivieren' && (
+              <span className="text-[11px] text-[#8B95A1] mt-0.5">
+                Die ausgewählten Geräte verschwinden aus "Überfällig" und "Diesen Monat fällig", bleiben aber in der Wartungsübersicht sichtbar.
               </span>
             )}
           </label>
