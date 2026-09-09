@@ -1,7 +1,8 @@
 'use client';
 import React, { useState, useEffect, useCallback } from 'react';
-import { LayoutGrid, Calendar, ClipboardList, StickyNote, Plus, X, Trash2, Wrench, ChevronLeft, ChevronRight, Loader2, Check } from 'lucide-react';
+import { LayoutGrid, Calendar, ClipboardList, StickyNote, Plus, X, Trash2, Wrench, Settings2, ChevronLeft, ChevronRight, Loader2, Check } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient';
+import WartungView from './WartungView';
 
 const TYPE_STYLES = {
   Wartung:      { bg: 'bg-[#E8F1EF]', text: 'text-[#2B6E63]', dot: 'bg-[#2B6E63]' },
@@ -43,6 +44,7 @@ const protoFromDb = (r) => ({ id: r.id, anlage: r.anlage, datum: r.datum, techni
 const protoToDb = (p) => ({ id: p.id, anlage: p.anlage, datum: p.datum, techniker: p.techniker || null, arbeiten: p.arbeiten || null, befund: p.befund || null, ersatzteile: p.ersatzteile || null, naechste_wartung: p.naechsteWartung || null, task_id: p.taskId || null });
 const noteFromDb = (r) => ({ id: r.id, title: r.title, content: r.content, date: r.date });
 const noteToDb = (n) => ({ id: n.id, title: n.title || null, content: n.content || null, date: n.date });
+const maintFromDb = (r) => ({ id: r.id, kundenId: r.kunden_id, kunde: r.kunde, modell: r.modell, seriennummer: r.seriennummer, installation: r.installation, letzteWartung: r.letzte_wartung, naechsteWartung: r.naechste_wartung, notiz: r.notiz });
 
 export default function Dashboard() {
   const [tab, setTab] = useState('kanban');
@@ -51,6 +53,7 @@ export default function Dashboard() {
   const [tasks, setTasks] = useState([]);
   const [protocols, setProtocols] = useState([]);
   const [notes, setNotes] = useState([]);
+  const [maintenanceItems, setMaintenanceItems] = useState([]);
 
   const [taskModal, setTaskModal] = useState(null);
   const [protocolModal, setProtocolModal] = useState(null);
@@ -58,17 +61,19 @@ export default function Dashboard() {
   const [monthCursor, setMonthCursor] = useState(() => { const d = new Date(); d.setDate(1); return d; });
 
   const loadAll = useCallback(async () => {
-    const [t, p, n] = await Promise.all([
+    const [t, p, n, m] = await Promise.all([
       supabase.from('tasks').select('*').order('created_at', { ascending: false }),
       supabase.from('protocols').select('*').order('created_at', { ascending: false }),
       supabase.from('notes').select('*').order('created_at', { ascending: false }),
+      supabase.from('maintenance_items').select('*').order('kunde', { ascending: true }),
     ]);
-    if (t.error || p.error || n.error) {
-      setErrorMsg((t.error || p.error || n.error).message);
+    if (t.error || p.error || n.error || m.error) {
+      setErrorMsg((t.error || p.error || n.error || m.error).message);
     } else {
       setTasks(t.data.map(taskFromDb));
       setProtocols(p.data.map(protoFromDb));
       setNotes(n.data.map(noteFromDb));
+      setMaintenanceItems(m.data.map(maintFromDb));
     }
     setReady(true);
   }, []);
@@ -80,6 +85,7 @@ export default function Dashboard() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, loadAll)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'protocols' }, loadAll)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'notes' }, loadAll)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'maintenance_items' }, loadAll)
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [loadAll]);
@@ -140,6 +146,7 @@ export default function Dashboard() {
         </div>
         <nav className="flex md:flex-col flex-1 md:py-3 md:px-2 justify-around md:justify-start">
           {[
+            { key: 'wartung', label: 'Wartung', icon: Settings2 },
             { key: 'kanban', label: 'Aufgaben', icon: LayoutGrid },
             { key: 'kalender', label: 'Kalender', icon: Calendar },
             { key: 'protokolle', label: 'Protokolle', icon: ClipboardList },
@@ -164,6 +171,7 @@ export default function Dashboard() {
             Fehler: {errorMsg}
           </div>
         )}
+        {tab === 'wartung' && <WartungView items={maintenanceItems} />}
         {tab === 'kanban' && (
           <KanbanView tasks={tasks} onNew={() => setTaskModal({})} onEdit={t => setTaskModal(t)} onDelete={deleteTask} onStatus={setTaskStatus} />
         )}
