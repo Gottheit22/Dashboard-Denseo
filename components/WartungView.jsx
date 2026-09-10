@@ -1,6 +1,7 @@
 'use client';
 import React, { useState, useMemo } from 'react';
-import { X, Search, AlertTriangle, CalendarClock, CalendarCheck, ListChecks, ChevronRight, Check, FileDown } from 'lucide-react';
+import { X, Search, AlertTriangle, CalendarClock, CalendarCheck, ListChecks, ChevronRight, Check, FilePlus2, FileText } from 'lucide-react';
+import ProtocolFormModal from './ProtocolFormModal';
 
 function fmtDate(iso) {
   if (!iso) return '—';
@@ -35,21 +36,20 @@ function addOneYear(iso) {
   return d.toISOString().slice(0, 10);
 }
 
-function protocolUrl(item) {
-  const params = new URLSearchParams({
-    kunde: item.kunde || '',
-    modell: item.modell || '',
-    seriennummer: item.seriennummer || '',
-    datum: item.geplantDatum || todayISO(),
-  });
-  return `/api/wartungsprotokoll?${params.toString()}`;
-}
-
-export default function WartungView({ items, onUpdateItem, onOfferSent }) {
+export default function WartungView({ items, onUpdateItem, onOfferSent, protokolle = [], onSaveProtokoll }) {
   const [overviewOpen, setOverviewOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [showInactive, setShowInactive] = useState(false);
   const [actionItem, setActionItem] = useState(null); // item that was clicked
+  const [protocolFormItem, setProtocolFormItem] = useState(null); // item being filled out
+
+  const latestProtocolByItem = useMemo(() => {
+    const map = {};
+    for (const p of protokolle) {
+      if (p.maintenance_item_id && !map[p.maintenance_item_id]) map[p.maintenance_item_id] = p;
+    }
+    return map;
+  }, [protokolle]);
 
   const withDate = items.filter(i => i.naechsteWartung && i.aktiv);
   const monthStart = startOfCurrentMonth();
@@ -144,15 +144,13 @@ export default function WartungView({ items, onUpdateItem, onOfferSent }) {
                   </div>
                   <div className="text-[11px] text-[#8B95A1] mt-0.5">{i.modell}{i.seriennummer ? ` · ${i.seriennummer}` : ''}</div>
                 </button>
-                <a
-                  href={protocolUrl(i)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  title="Wartungsprotokoll als PDF öffnen"
+                <button
+                  onClick={() => setProtocolFormItem(i)}
+                  title="Wartungsprotokoll ausfüllen"
                   className="flex items-center justify-center w-9 shrink-0 rounded-lg border border-[#DCE4EC] bg-white text-[#5B7FA6] hover:bg-[#F4F7FA]"
                 >
-                  <FileDown className="w-4 h-4" />
-                </a>
+                  <FilePlus2 className="w-4 h-4" />
+                </button>
               </div>
             ))}
           </div>
@@ -205,6 +203,7 @@ export default function WartungView({ items, onUpdateItem, onOfferSent }) {
                     <th className="px-3 py-2 font-medium">Installation</th>
                     <th className="px-3 py-2 font-medium">Letzte Wartung</th>
                     <th className="px-3 py-2 font-medium">Nächste Wartung</th>
+                    <th className="px-3 py-2 font-medium">Protokoll</th>
                     <th className="px-5 py-2 font-medium">Notiz</th>
                   </tr>
                 </thead>
@@ -212,6 +211,7 @@ export default function WartungView({ items, onUpdateItem, onOfferSent }) {
                   {filtered.map(i => {
                     const d = daysUntil(i.naechsteWartung);
                     const overdue = d !== null && d < 0;
+                    const protokoll = latestProtocolByItem[i.id];
                     return (
                       <tr key={i.id} className={`border-b border-[#F0F1EE] hover:bg-[#F7F8F6] ${!i.aktiv ? 'opacity-50' : ''}`}>
                         <td className="px-5 py-2">
@@ -235,12 +235,27 @@ export default function WartungView({ items, onUpdateItem, onOfferSent }) {
                         <td className="px-3 py-2 text-[#5B6570]">{fmtDate(i.installation)}</td>
                         <td className="px-3 py-2 text-[#5B6570]">{fmtDate(i.letzteWartung)}</td>
                         <td className={`px-3 py-2 font-medium ${overdue ? 'text-[#C1553A]' : 'text-[#1C2530]'}`}>{fmtDate(i.naechsteWartung)}</td>
+                        <td className="px-3 py-2">
+                          {protokoll ? (
+                            <a
+                              href={`/api/wartungsprotokoll?id=${protokoll.id}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={e => e.stopPropagation()}
+                              className="flex items-center gap-1 text-[#2B6E63] hover:underline"
+                            >
+                              <FileText className="w-3.5 h-3.5" /> ansehen
+                            </a>
+                          ) : (
+                            <span className="text-[#C4CAD0]">—</span>
+                          )}
+                        </td>
                         <td className="px-5 py-2 text-[#8B95A1]">{i.notiz || ''}</td>
                       </tr>
                     );
                   })}
                   {filtered.length === 0 && (
-                    <tr><td colSpan={7} className="px-5 py-6 text-center text-[#B0B7BD]">Keine Treffer</td></tr>
+                    <tr><td colSpan={8} className="px-5 py-6 text-center text-[#B0B7BD]">Keine Treffer</td></tr>
                   )}
                 </tbody>
               </table>
@@ -256,6 +271,15 @@ export default function WartungView({ items, onUpdateItem, onOfferSent }) {
           onClose={() => setActionItem(null)}
           onConfirm={onUpdateItem}
           onOfferSent={onOfferSent}
+        />
+      )}
+
+      {protocolFormItem && (
+        <ProtocolFormModal
+          item={protocolFormItem}
+          onClose={() => setProtocolFormItem(null)}
+          onSaveProtokoll={onSaveProtokoll}
+          onUpdateItem={onUpdateItem}
         />
       )}
     </div>
