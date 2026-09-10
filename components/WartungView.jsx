@@ -1,6 +1,6 @@
 'use client';
 import React, { useState, useMemo } from 'react';
-import { X, Search, AlertTriangle, CalendarClock, CalendarCheck, ListChecks, ChevronRight, Check } from 'lucide-react';
+import { X, Search, AlertTriangle, CalendarClock, CalendarCheck, ListChecks, ChevronRight, Check, FileDown } from 'lucide-react';
 
 function fmtDate(iso) {
   if (!iso) return '—';
@@ -35,7 +35,17 @@ function addOneYear(iso) {
   return d.toISOString().slice(0, 10);
 }
 
-export default function WartungView({ items, onUpdateItem }) {
+function protocolUrl(item) {
+  const params = new URLSearchParams({
+    kunde: item.kunde || '',
+    modell: item.modell || '',
+    seriennummer: item.seriennummer || '',
+    datum: item.geplantDatum || todayISO(),
+  });
+  return `/api/wartungsprotokoll?${params.toString()}`;
+}
+
+export default function WartungView({ items, onUpdateItem, onOfferSent }) {
   const [overviewOpen, setOverviewOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [showInactive, setShowInactive] = useState(false);
@@ -126,13 +136,24 @@ export default function WartungView({ items, onUpdateItem }) {
           <div className="flex flex-col gap-1.5 max-h-[340px] overflow-y-auto">
             {planned.length === 0 && <div className="text-[12px] text-[#B0B7BD] py-3 text-center">Keine geplanten Wartungen</div>}
             {planned.map(i => (
-              <button key={i.id} onClick={() => setActionItem(i)} className="w-full text-left border border-[#DCE4EC] bg-[#F4F7FA] rounded-lg px-3 py-2 hover:border-[#B9C9DA]">
-                <div className="flex items-center justify-between">
-                  <span className="text-[12.5px] font-medium text-[#1C2530] truncate">{i.kunde}</span>
-                  <span className="text-[11px] text-[#5B7FA6] font-medium shrink-0 ml-2">{fmtDate(i.geplantDatum)}</span>
-                </div>
-                <div className="text-[11px] text-[#8B95A1] mt-0.5">{i.modell}{i.seriennummer ? ` · ${i.seriennummer}` : ''}</div>
-              </button>
+              <div key={i.id} className="flex items-stretch gap-1.5">
+                <button onClick={() => setActionItem(i)} className="flex-1 text-left border border-[#DCE4EC] bg-[#F4F7FA] rounded-lg px-3 py-2 hover:border-[#B9C9DA]">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[12.5px] font-medium text-[#1C2530] truncate">{i.kunde}</span>
+                    <span className="text-[11px] text-[#5B7FA6] font-medium shrink-0 ml-2">{fmtDate(i.geplantDatum)}</span>
+                  </div>
+                  <div className="text-[11px] text-[#8B95A1] mt-0.5">{i.modell}{i.seriennummer ? ` · ${i.seriennummer}` : ''}</div>
+                </button>
+                <a
+                  href={protocolUrl(i)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="Wartungsprotokoll als PDF öffnen"
+                  className="flex items-center justify-center w-9 shrink-0 rounded-lg border border-[#DCE4EC] bg-white text-[#5B7FA6] hover:bg-[#F4F7FA]"
+                >
+                  <FileDown className="w-4 h-4" />
+                </a>
+              </div>
             ))}
           </div>
         </div>
@@ -234,6 +255,7 @@ export default function WartungView({ items, onUpdateItem }) {
           allItems={items}
           onClose={() => setActionItem(null)}
           onConfirm={onUpdateItem}
+          onOfferSent={onOfferSent}
         />
       )}
     </div>
@@ -247,7 +269,7 @@ const ACTIONS = {
   archivieren: { label: 'Möchten keine Wartung' },
 };
 
-function OfferActionModal({ clickedItem, allItems, onClose, onConfirm }) {
+function OfferActionModal({ clickedItem, allItems, onClose, onConfirm, onOfferSent }) {
   const relatedItems = useMemo(
     () => allItems.filter(i => groupKey(i) === groupKey(clickedItem)),
     [allItems, clickedItem]
@@ -296,6 +318,10 @@ function OfferActionModal({ clickedItem, allItems, onClose, onConfirm }) {
       }
       if (Object.keys(patch).length > 0) {
         await onConfirm(item.id, patch);
+      }
+      if (action === 'angebot' && onOfferSent) {
+        const deviceLabel = [item.modell, item.seriennummer].filter(Boolean).join(' · ');
+        await onOfferSent(item.kunde, deviceLabel);
       }
     }
     setSaving(false);
@@ -379,6 +405,11 @@ function OfferActionModal({ clickedItem, allItems, onClose, onConfirm }) {
           {action === 'archivieren' && (
             <span className="text-[11px] text-[#8B95A1] -mt-1">
               Die ausgewählten Geräte verschwinden aus "Überfällig" und "Diesen Monat fällig", bleiben aber in der Wartungsübersicht sichtbar.
+            </span>
+          )}
+          {action === 'angebot' && (
+            <span className="text-[11px] text-[#8B95A1] -mt-1">
+              Legt zusätzlich in "Aufgaben" eine erledigte Aufgabe "Angebot verschickt" sowie ein neues To-Do "Wartungstermin planen" an.
             </span>
           )}
 
