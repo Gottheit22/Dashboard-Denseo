@@ -274,9 +274,9 @@ function OfferActionModal({ clickedItem, allItems, onClose, onConfirm, onOfferSe
     () => allItems.filter(i => groupKey(i) === groupKey(clickedItem)),
     [allItems, clickedItem]
   );
-  const [action, setAction] = useState('angebot');
+  const [action, setAction] = useState(clickedItem.geplantDatum ? 'geplant' : 'angebot');
   const [selected, setSelected] = useState(() => new Set([clickedItem.id]));
-  const [date, setDate] = useState(todayISO());
+  const [date, setDate] = useState(clickedItem.geplantDatum || todayISO());
   const [customNote, setCustomNote] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -401,6 +401,11 @@ function OfferActionModal({ clickedItem, allItems, onClose, onConfirm, onOfferSe
                 </span>
               )}
             </label>
+          )}
+          {action === 'geplant' && clickedItem.geplantDatum && (
+            <span className="text-[11px] text-[#8B95A1] -mt-1">
+              Ersetzt den bisherigen Termin ({fmtDate(clickedItem.geplantDatum)}).
+            </span>
           )}
           {action === 'archivieren' && (
             <span className="text-[11px] text-[#8B95A1] -mt-1">
