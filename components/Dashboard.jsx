@@ -54,6 +54,7 @@ export default function Dashboard() {
   const [protocols, setProtocols] = useState([]);
   const [notes, setNotes] = useState([]);
   const [maintenanceItems, setMaintenanceItems] = useState([]);
+  const [wartungProtokolle, setWartungProtokolle] = useState([]);
 
   const [taskModal, setTaskModal] = useState(null);
   const [protocolModal, setProtocolModal] = useState(null);
@@ -61,19 +62,21 @@ export default function Dashboard() {
   const [monthCursor, setMonthCursor] = useState(() => { const d = new Date(); d.setDate(1); return d; });
 
   const loadAll = useCallback(async () => {
-    const [t, p, n, m] = await Promise.all([
+    const [t, p, n, m, wp] = await Promise.all([
       supabase.from('tasks').select('*').order('created_at', { ascending: false }),
       supabase.from('protocols').select('*').order('created_at', { ascending: false }),
       supabase.from('notes').select('*').order('created_at', { ascending: false }),
       supabase.from('maintenance_items').select('*').order('kunde', { ascending: true }),
+      supabase.from('wartung_protokolle').select('*').order('created_at', { ascending: false }),
     ]);
-    if (t.error || p.error || n.error || m.error) {
-      setErrorMsg((t.error || p.error || n.error || m.error).message);
+    if (t.error || p.error || n.error || m.error || wp.error) {
+      setErrorMsg((t.error || p.error || n.error || m.error || wp.error).message);
     } else {
       setTasks(t.data.map(taskFromDb));
       setProtocols(p.data.map(protoFromDb));
       setNotes(n.data.map(noteFromDb));
       setMaintenanceItems(m.data.map(maintFromDb));
+      setWartungProtokolle(wp.data);
     }
     setReady(true);
   }, []);
@@ -86,6 +89,7 @@ export default function Dashboard() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'protocols' }, loadAll)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'notes' }, loadAll)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'maintenance_items' }, loadAll)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'wartung_protokolle' }, loadAll)
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [loadAll]);
@@ -129,6 +133,13 @@ export default function Dashboard() {
     });
     const { error } = await supabase.from('tasks').insert([doneTask, todoTask]);
     if (error) setErrorMsg(error.message); else loadAll();
+  }
+
+  async function saveWartungProtokoll(record) {
+    const { data, error } = await supabase.from('wartung_protokolle').insert(record).select().single();
+    if (error) { setErrorMsg(error.message); return null; }
+    loadAll();
+    return data;
   }
 
   async function upsertNote(n) {
@@ -190,7 +201,15 @@ export default function Dashboard() {
             Fehler: {errorMsg}
           </div>
         )}
-        {tab === 'wartung' && <WartungView items={maintenanceItems} onUpdateItem={updateMaintenanceItem} onOfferSent={createOfferTasks} />}
+        {tab === 'wartung' && (
+          <WartungView
+            items={maintenanceItems}
+            onUpdateItem={updateMaintenanceItem}
+            onOfferSent={createOfferTasks}
+            protokolle={wartungProtokolle}
+            onSaveProtokoll={saveWartungProtokoll}
+          />
+        )}
         {tab === 'kanban' && (
           <KanbanView tasks={tasks} onNew={() => setTaskModal({})} onEdit={t => setTaskModal(t)} onDelete={deleteTask} onStatus={setTaskStatus} />
         )}
