@@ -1,37 +1,8 @@
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
+import { createClient } from '@supabase/supabase-js';
+import { HARDWARE_ITEMS, SOFTWARE_ITEMS } from '../../../lib/wartungsChecklist';
 
 export const runtime = 'nodejs';
-
-const HARDWARE = [
-  'Austausch und Fetten der material pump tubes',
-  'Austausch und Fetten der roller pump tubes',
-  'Austausch und Fetten der waste pump tube',
-  'Austausch und Fetten der vacuum pump tube',
-  'Austausch der roller waste collector tubes',
-  'Austausch des vacuum filter',
-  'Austausch der wiper base',
-  'Kontrollieren des Wiper Antriebs',
-  'Fetten der Z-axis screws',
-  'Austausch der grind wheels und Säuberung des build tray wheel track',
-  'Überprüfen der build-tray belt tension',
-  'Überprüfen, dass das UV module sauber ist',
-  'Überprüfen des roller-waste collector, wenn nötig austauschen',
-  'Überprüfen, dass das material cabinet board sauber ist',
-  'Überprüfen, dass die Lüfter funktionieren',
-  'Austausch des ProAero pre filter, wenn nötig (Vorfiltermatte, weiß)',
-  'Austausch leerer Kartuschen',
-];
-
-const SOFTWARE = [
-  'Kalibrierung des wipers',
-  'Ausführen des Vacuum Calibration wizard',
-  'Ausführen des Head-filling wizard',
-  'Ausführen des Head-purging wizard',
-  'Ausführen des Advanced Head Optimization wizard',
-  'Zurücksetzen des PM counter bei Nutzung des Preventive Maintenance wizard',
-  'Ausführen des Weight sensor calibration wizard',
-  'Testdruck mit Wartungswürfel.stl starten',
-];
 
 function wrapText(str, font, size, maxWidth) {
   const words = str.split(' ');
@@ -52,10 +23,37 @@ function wrapText(str, font, size, maxWidth) {
 
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
-  const kunde = searchParams.get('kunde') || '';
-  const modell = searchParams.get('modell') || 'JX';
-  const seriennummer = searchParams.get('seriennummer') || '';
-  const datumParam = searchParams.get('datum') || '';
+  const id = searchParams.get('id');
+
+  let kunde = '';
+  let modell = 'JX';
+  let seriennummer = '';
+  let datumParam = '';
+  let techniker = '';
+  let notiz = '';
+  let hardwareChecked = null; // null = leere Vorlage
+  let softwareChecked = null;
+
+  if (id) {
+    const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
+    const { data, error } = await supabase.from('wartung_protokolle').select('*').eq('id', id).single();
+    if (error || !data) {
+      return new Response('Protokoll nicht gefunden', { status: 404 });
+    }
+    kunde = data.kunde || '';
+    modell = data.modell || 'JX';
+    seriennummer = data.seriennummer || '';
+    datumParam = data.datum || '';
+    techniker = data.techniker || '';
+    notiz = data.notiz || '';
+    hardwareChecked = Array.isArray(data.hardware) ? data.hardware : [];
+    softwareChecked = Array.isArray(data.software) ? data.software : [];
+  } else {
+    kunde = searchParams.get('kunde') || '';
+    modell = searchParams.get('modell') || 'JX';
+    seriennummer = searchParams.get('seriennummer') || '';
+    datumParam = searchParams.get('datum') || '';
+  }
 
   const pdfDoc = await PDFDocument.create();
   const page = pdfDoc.addPage([595.28, 841.89]); // A4
@@ -67,8 +65,12 @@ export async function GET(request) {
   function text(str, x, y, opts = {}) {
     page.drawText(str, { x, y, size: opts.size || 10, font: opts.bold ? bold : font, color: rgb(0.11, 0.15, 0.19) });
   }
-  function checkbox(x, y) {
+  function checkbox(x, y, checked) {
     page.drawRectangle({ x, y: y - 1.5, width: 9, height: 9, borderColor: rgb(0.3, 0.34, 0.38), borderWidth: 0.9 });
+    if (checked) {
+      page.drawLine({ start: { x: x + 1.3, y: y + 2 }, end: { x: x + 3.7, y: y - 0.3 }, thickness: 1.3, color: rgb(0.17, 0.43, 0.39) });
+      page.drawLine({ start: { x: x + 3.7, y: y - 0.3 }, end: { x: x + 8, y: y + 6.5 }, thickness: 1.3, color: rgb(0.17, 0.43, 0.39) });
+    }
   }
 
   let y = height - margin;
@@ -85,6 +87,10 @@ export async function GET(request) {
   y -= 18;
   text('Seriennummer:', margin, y, { size: 10.5, bold: true });
   text(seriennummer, margin + 85, y, { size: 10.5 });
+  if (techniker) {
+    text('Techniker:', margin + 220, y, { size: 10.5, bold: true });
+    text(techniker, margin + 275, y, { size: 10.5 });
+  }
   y -= 32;
 
   const colGap = 26;
@@ -95,25 +101,36 @@ export async function GET(request) {
   const itemSize = 9.5;
   const lineHeight = 15;
 
-  function drawSection(title, items, x, startY) {
+  function drawSection(title, items, checkedArr, x, startY) {
     let cy = startY;
     text(title, x, cy, { size: 13, bold: true });
     cy -= 20;
-    for (const item of items) {
+    items.forEach((item, idx) => {
+      const checked = checkedArr ? !!checkedArr[idx] : false;
       const lines = wrapText(item, font, itemSize, itemMaxWidth);
-      checkbox(x, cy);
-      lines.forEach((line, idx) => {
-        text(line, x + 15, cy - idx * (lineHeight - 3), { size: itemSize });
+      checkbox(x, cy, checked);
+      lines.forEach((line, li) => {
+        text(line, x + 15, cy - li * (lineHeight - 3), { size: itemSize });
       });
       cy -= lines.length > 1 ? lines.length * (lineHeight - 3) + 6 : lineHeight;
-    }
+    });
     return cy;
   }
 
-  const y1 = drawSection('Hardware', HARDWARE, col1X, y);
-  const y2 = drawSection('Software', SOFTWARE, col2X, y);
+  const y1 = drawSection('Hardware', HARDWARE_ITEMS, hardwareChecked, col1X, y);
+  const y2 = drawSection('Software', SOFTWARE_ITEMS, softwareChecked, col2X, y);
 
-  const bottomY = Math.min(y1, y2) - 45;
+  let bottomY = Math.min(y1, y2) - 20;
+
+  if (notiz) {
+    text('Notiz:', margin, bottomY, { size: 9.5, bold: true });
+    const notizLines = wrapText(notiz, font, 9.5, width - margin * 2 - 45);
+    notizLines.forEach((line, idx) => text(line, margin + 42, bottomY - idx * 13, { size: 9.5 }));
+    bottomY -= notizLines.length * 13 + 20;
+  } else {
+    bottomY -= 20;
+  }
+
   const lineWidth = 200;
   page.drawLine({ start: { x: margin, y: bottomY }, end: { x: margin + lineWidth, y: bottomY }, thickness: 0.9, color: rgb(0.3, 0.34, 0.38) });
   page.drawLine({ start: { x: width - margin - lineWidth, y: bottomY }, end: { x: width - margin, y: bottomY }, thickness: 0.9, color: rgb(0.3, 0.34, 0.38) });
