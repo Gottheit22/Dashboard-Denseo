@@ -117,6 +117,20 @@ export default function Dashboard() {
     if (error) setErrorMsg(error.message); else loadAll();
   }
 
+  async function createOfferTasks(kunde, deviceLabel) {
+    const suffix = deviceLabel ? ` (${deviceLabel})` : '';
+    const doneTask = taskToDb({
+      id: crypto.randomUUID(), title: `Angebot verschickt – ${kunde}${suffix}`,
+      type: 'Wartung', status: 'erledigt', assignee: '', dueDate: null, notes: '', checklist: [],
+    });
+    const todoTask = taskToDb({
+      id: crypto.randomUUID(), title: `Wartungstermin planen – ${kunde}${suffix}`,
+      type: 'Wartung', status: 'offen', assignee: '', dueDate: null, notes: '', checklist: [],
+    });
+    const { error } = await supabase.from('tasks').insert([doneTask, todoTask]);
+    if (error) setErrorMsg(error.message); else loadAll();
+  }
+
   async function upsertNote(n) {
     const { error } = await supabase.from('notes').upsert(noteToDb(n));
     if (error) setErrorMsg(error.message); else { setNoteModal(null); loadAll(); }
@@ -176,7 +190,7 @@ export default function Dashboard() {
             Fehler: {errorMsg}
           </div>
         )}
-        {tab === 'wartung' && <WartungView items={maintenanceItems} onUpdateItem={updateMaintenanceItem} />}
+        {tab === 'wartung' && <WartungView items={maintenanceItems} onUpdateItem={updateMaintenanceItem} onOfferSent={createOfferTasks} />}
         {tab === 'kanban' && (
           <KanbanView tasks={tasks} onNew={() => setTaskModal({})} onEdit={t => setTaskModal(t)} onDelete={deleteTask} onStatus={setTaskStatus} />
         )}
